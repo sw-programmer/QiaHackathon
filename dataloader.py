@@ -6,6 +6,7 @@ import pandas as pd
 from torch.utils.data import Dataset
 from pykospacing import Spacing
 from hanspell import spell_checker
+from transformers import AutoTokenizer
 
 #TODO:
 # * train / text 다른 로직이 필요 (데이터 형식이 조금 다름)
@@ -19,14 +20,13 @@ class QiaDataset(Dataset):
         target_mbti: str,
         txt_preprocess: bool = True,
         normalize: bool = True,
-        is_bert: bool = True,
         is_binary_classification: bool = True,
+        is_bert: bool = True,
         is_train: bool = True
         ):
 
         data = pd.read_csv(data_path) if data_path.endswith('.csv') else pd.read_parquet(data_path)
-        question = pd.read_csv(question_path)
-
+        self.question_data = pd.read_csv(question_path)
 
         # preprocess data
         if txt_preprocess:
@@ -34,19 +34,17 @@ class QiaDataset(Dataset):
             data['Answer'] = data['Answer'].apply(self.fix_spacing)
             data['Answer'] = data['Answer'].apply(self.remove_punctuation)
         if normalize:
+            #FIXME: axis 검증 필요
             data['Age'] = data['Age'].apply(lambda x: (x-x.mean())/ x.std(), axis=0)
-
 
         # make dataset for binary classification
         if is_binary_classification:
-            self.prepare_binary_classification(data)
-
+            self.prepare_binary_classification(data, target_mbti)
 
         # prepare for language model
-        #TODO:
-        # 1. 문장에 [CLS], [SEP] Token 붙여주기 --> QA 는 이어진 문장이므로 [SEP], [CLS] 잘 붙여줘야 함
-        # 2. Tokenizer
-        # 3. getitem --> BERT input dimension 확인 후 변환 & 다른 features 들과 붙여서 input instance 생성
+        #TODO: tokenizer class 인자로 넣어야 함 & tokenizer 만으로 [CLS], [SEP] 잘 붙는지 확인 필요
+        self.tokenizer = AutoTokenizer.from_pretrained("klue/bert-base")
+        self.tokenize(data)
 
         self.data = data
 
@@ -54,25 +52,28 @@ class QiaDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
+        #TODO:
+        # * getitem --> BERT input dimension 확인 후 변환 & 다른 features 들과 붙여서 input instance 생성
         pass
 
-    def fix_grammar(answer: str):
+
+    def fix_grammar(self, answer: str):
         answer = spell_checker.check(answer)
         return answer.checked
 
-    def fix_spacing(answer: str):
+    def fix_spacing(self, answer: str):
         answer = answer.replace(" ", '')
         spacing = Spacing()
         return spacing(answer)
 
-    def remove_punctuation(answer: str):
+    def remove_punctuation(self, answer: str):
         #FIXME: remove punctuation
         answer = re.sub(r'[@%\\*=()/~#&\+á?\xc3\xa1\-\|\.\:\;\!\-\,\_\~\$\'\"]', '', answer)
         answer = re.sub(r"^\s+", '', answer)                    # remove space from start
         answer = re.sub(r'\s+$', '', answer)                    # remove space from the end
         return answer
 
-    def prepare_binary_classification(data: pd.DataFrame):
+    def prepare_binary_classification(self, data: pd.DataFrame, target_mbti: str):
         t_value, f_value = 1, 0
         target_mbti = target_mbti.upper()
         if target_mbti not in ['E', 'N', 'F', 'P']:
@@ -96,8 +97,10 @@ class QiaDataset(Dataset):
             col_name = 'J/P'
         data.rename(columns = {'MBTI':col_name}, inplace=True)
 
-    def tokenize():
-        pass
+    def tokenize(self, data: pd.DataFrame):
+        data['QandA'] =  data.apply(lambda row : self.tokenizer(            \
+            self.question_data.iloc[row['Q_number'] - 1].Question,          \
+            row['Answer']))
 
 
 
