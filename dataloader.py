@@ -4,7 +4,7 @@ import re
 import torch
 import pandas as pd
 from torch.utils.data import Dataset
-from pykospacing import Spacing                     #FIXME: 이 패키지가 m1 mac 에서 작동을 안 함...
+from pykospacing import Spacing                     #FIXME: 이 패키지가 m1 mac 에서 작동을 안 함... -> Colab 에서 불러서 실행할 것
 from hanspell import spell_checker
 from transformers import AutoTokenizer
 
@@ -17,6 +17,7 @@ class MBTIDataset(Dataset):
         self,
         data_path: str,
         question_path: str,
+        pretrained_url: str = "klue/bert-base",
         target_mbti: str = None,
         txt_preprocess: bool = True,
         normalize: bool = True,
@@ -53,10 +54,12 @@ class MBTIDataset(Dataset):
         label_col = None
         if is_train and is_binary_classification:
             label_col = self.prepare_binary_classification(data, target_mbti)
+            # if method right above works successfully, then 'label_col' column should contain same # 0 and 1.
+            assert data[label_col].value_counts()[0] == \
+                   data[label_col].value_counts()[1]
 
         # prepare for language model
-        #TODO: tokenizer class 인자로 넣어야 함 & tokenizer 만으로 [CLS], [SEP] 잘 붙는지 확인 필요
-        self.tokenizer = AutoTokenizer.from_pretrained("klue/bert-base")
+        self.tokenizer = AutoTokenizer.from_pretrained(pretrained_url)
         self.tokenize(data)
 
         # select columns for both training and inference
@@ -71,6 +74,7 @@ class MBTIDataset(Dataset):
     def __getitem__(self, idx):
         #TODO:
         # * getitem --> BERT input dimension 확인 후 변환 & 다른 features 들과 붙여서 input instance 생성
+
         pass
 
     # ======================
@@ -87,7 +91,6 @@ class MBTIDataset(Dataset):
         return spacing(answer)
 
     def remove_punctuation(self, answer: str) -> str:
-        #FIXME: remove punctuation 검증 필요
         answer = re.sub(r'[@%\\*=()/~#&\+á?\xc3\xa1\-\|\.\:\;\!\-\,\_\~\$\'\"]', '', answer)
         answer = re.sub(r"^\s+", '', answer)                    # remove space from start
         answer = re.sub(r'\s+$', '', answer)                    # remove space from the end
@@ -116,17 +119,15 @@ class MBTIDataset(Dataset):
         else:
             col_name = 'J/P'
         data.rename(columns = {'MBTI':col_name}, inplace=True)
-        
+
         return col_name
 
     def tokenize(self, data: pd.DataFrame):
-        data['QandA'] =  data.apply(lambda row : self.tokenizer(                    \
-            self.question_data.iloc[row['Q_number'] - 1].Question, row['Answer']    \
-            ))
 
+        def tokenize_per_sentence(series: pd.Series) -> str:
+            selected_question = self.question_data.iloc[series['Q_number'] - 1].Question
+            selected_answer = series['Answer']
+            return self.tokenizer(selected_question, selected_answer)
 
-
-
-
-
-
+        #TODO: tokenizer 에 다른 인자 필요하면 넣어주기
+        data['QandA'] =  data.apply(tokenize_per_sentence, axis=1)
