@@ -5,13 +5,14 @@ import re
 import torch
 import pandas as pd
 from torch.utils.data import Dataset
-from pykospacing import Spacing                     #FIXME: 이 패키지가 m1 mac 에서 작동을 안 함... -> Colab 에서 불러서 실행할 것
+from pykospacing import Spacing
 from hanspell import spell_checker
 from transformers import AutoTokenizer
 
 #TODO:
-# * train / text 다른 로직이 필요 (데이터 형식이 조금 다름)
-# * 다른 Text preprocess 방식 도입 검토
+# 1. train / text 다른 로직이 필요 (데이터 형식이 조금 다름)
+# 2. 다른 Text preprocess 방식 도입 검토
+#       ref : https://ebbnflow.tistory.com/246
 
 class MBTIDataset(Dataset):
     def __init__(
@@ -46,10 +47,11 @@ class MBTIDataset(Dataset):
 
         # preprocess data
         if txt_preprocess:
-            #TODO: 여기 코드 줄이기 (agg)
-            data['Answer'] = data['Answer'].apply(self.fix_grammar)
-            data['Answer'] = data['Answer'].apply(self.fix_spacing)
-            data['Answer'] = data['Answer'].apply(self.remove_punctuation)
+            # 아래 주석 처리된 세 줄은 deprecated
+            # data['Answer'] = data['Answer'].apply(self.fix_grammar)
+            # data['Answer'] = data['Answer'].apply(self.fix_spacing)
+            # data['Answer'] = data['Answer'].apply(self.remove_punctuation)
+            self.preprocess_text(data)
         if normalize:
             data['Age'] = (data['Age'] - data['Age'].mean()) / data['Age'].std()
 
@@ -66,21 +68,31 @@ class MBTIDataset(Dataset):
         self.padding_per_batch = padding_per_batch
         self.tokenize(data)
 
-        # select columns for both training and inference
-        #TODO: 테스트 데이터를 고려해서 유저 정보를 학습에 활용하지 않는 상황. 필요시 고쳐야 함.
-        self.selected_cols = ['Gender', 'Age', 'QandA']
-        self.label_col = label_col
-        self.data = data
+        # set columns for both training and inference
+        #TODO: 테스트 데이터를 고려해서 유저 정보를 학습에 활용하지 않는 상황. 필요시 고쳐야 함
+        self.cat_col    = ['Gender']
+        self.num_col    = ['Age']
+        self.label_col  = label_col
+        self.data       = data
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
-        #TODO:
-        # * getitem --> BERT input dimension 확인 후 변환 & 다른 features 들과 붙여서 input instance 생성
-        # Convert into tensor
 
-        pass
+        selected_data = self.data.iloc[idx]
+
+        cat_input = torch.tensor(selected_data[self.cat_col])                               # [batch size   x   # categorical features]
+        num_input = torch.tensor(selected_data[self.num_col])                               # [batch size   x   # numerical features]
+        label     = torch.tensor(selected_data[self.label_col])                             # [batch size   x   1]
+
+        #TODO: Tokenize 의 결과가 자동으로 torch.Tensor 형태로 뽑힘. 이유는...모름
+        sample              = selected_data['QandA']                                        # [batch size   x   sequence length]
+        sample['cat_input'] = cat_input
+        sample['num_input'] = num_input
+        sample['label']     = label
+
+        return sample
 
     # ======================
     #    Helper Functions
@@ -91,15 +103,21 @@ class MBTIDataset(Dataset):
         return answer.checked
 
     def fix_spacing(self, answer: str) -> str:
-        answer = answer.replace(" ", '')
+        answer  = answer.replace(" ", '')
         spacing = Spacing()
         return spacing(answer)
 
     def remove_punctuation(self, answer: str) -> str:
         answer = re.sub(r'[@%\\*=()/~#&\+á?\xc3\xa1\-\|\.\:\;\!\-\,\_\~\$\'\"]', '', answer)
-        answer = re.sub(r"^\s+", '', answer)                    # remove space from start
-        answer = re.sub(r'\s+$', '', answer)                    # remove space from the end
+        answer = re.sub(r'\s+', ' ', answer)        # remove extra space
+        answer = re.sub(r"^\s+", '', answer)        # remove space from start
+        answer = re.sub(r'\s+$', '', answer)        # remove space from the end
         return answer
+    
+    def preprocess_text(self, data: pd.DataFrame):
+        data['Answer'] = data['Answer'].apply(self.fix_grammar)
+        data['Answer'] = data['Answer'].apply(self.fix_spacing)
+        data['Answer'] = data['Answer'].apply(self.remove_punctuation)
 
     def prepare_binary_classification(self, data: pd.DataFrame, target_mbti: str) -> str:
         t_value, f_value = 1, 0
@@ -134,7 +152,7 @@ class MBTIDataset(Dataset):
             selected_answer = series['Answer']
 
             padding = False if self.padding_per_batch else 'longest'
-            #TODO: max_length 분석 필요
+            #TODO: 필요시 max_length 조절 필요
             return self.tokenizer(selected_question, selected_answer, padding=padding)
 
         data['QandA'] =  data.apply(tokenize_per_sentence, axis=1)

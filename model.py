@@ -17,5 +17,10 @@ class BertClassifier(BertForSequenceClassification):
         combined_feat_dim = config.text_feat_dim +  \
                             config.cat_feat_dim +   \
                             config.num_feat_dim
+                            
+        # Sizes of objects
+        #               cls     [batch size x 768]
+        #   numerical_feats     [batch size x # numerical features]
+        #         cat_feats     [batch size x # catrgorical features]
 
     pass
