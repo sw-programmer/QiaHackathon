@@ -1,5 +1,6 @@
 import os
 import re
+# from typing import Union
 
 import torch
 import pandas as pd
@@ -17,10 +18,11 @@ class MBTIDataset(Dataset):
         self,
         data_path: str,
         question_path: str,
-        pretrained_url: str = "klue/bert-base",
         target_mbti: str = None,
         txt_preprocess: bool = True,
         normalize: bool = True,
+        pretrained_url: str = "klue/bert-base",
+        padding_per_batch = True,
         is_binary_classification: bool = True,
         is_bert: bool = True,
         is_train: bool = True
@@ -44,6 +46,7 @@ class MBTIDataset(Dataset):
 
         # preprocess data
         if txt_preprocess:
+            #TODO: 여기 코드 줄이기 (agg)
             data['Answer'] = data['Answer'].apply(self.fix_grammar)
             data['Answer'] = data['Answer'].apply(self.fix_spacing)
             data['Answer'] = data['Answer'].apply(self.remove_punctuation)
@@ -60,6 +63,7 @@ class MBTIDataset(Dataset):
 
         # prepare for language model
         self.tokenizer = AutoTokenizer.from_pretrained(pretrained_url)
+        self.padding_per_batch = padding_per_batch
         self.tokenize(data)
 
         # select columns for both training and inference
@@ -74,6 +78,7 @@ class MBTIDataset(Dataset):
     def __getitem__(self, idx):
         #TODO:
         # * getitem --> BERT input dimension 확인 후 변환 & 다른 features 들과 붙여서 input instance 생성
+        # Convert into tensor
 
         pass
 
@@ -127,7 +132,9 @@ class MBTIDataset(Dataset):
         def tokenize_per_sentence(series: pd.Series) -> str:
             selected_question = self.question_data.iloc[series['Q_number'] - 1].Question
             selected_answer = series['Answer']
-            return self.tokenizer(selected_question, selected_answer)
 
-        #TODO: tokenizer 에 다른 인자 필요하면 넣어주기
+            padding = False if self.padding_per_batch else 'longest'
+            #TODO: max_length 분석 필요
+            return self.tokenizer(selected_question, selected_answer, padding=padding)
+
         data['QandA'] =  data.apply(tokenize_per_sentence, axis=1)
