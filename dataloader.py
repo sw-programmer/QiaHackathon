@@ -47,21 +47,17 @@ class MBTIDataset(Dataset):
 
         # preprocess data
         if txt_preprocess:
-            # 아래 주석 처리된 세 줄은 deprecated
-            # data['Answer'] = data['Answer'].apply(self.fix_grammar)
-            # data['Answer'] = data['Answer'].apply(self.fix_spacing)
-            # data['Answer'] = data['Answer'].apply(self.remove_punctuation)
-            self.preprocess_text(data)
+            self.preprocess_txt(data)
         if normalize:
             data['Age'] = (data['Age'] - data['Age'].mean()) / data['Age'].std()
 
-        # align dataset with binary classification (only for training data - test data doesn't contain 'MBTI' field)
+        # make dataset suitable for binary classification (only for training data - test data doesn't contain 'MBTI' field)
         label_col = None
         if is_train and is_binary_classification:
             label_col = self.prepare_binary_classification(data, target_mbti)
             # if method right above works successfully, then 'label_col' column should contain same # 0 and 1.
-            assert data[label_col].value_counts()[0] == \
-                   data[label_col].value_counts()[1]
+            value_counted = data[label_col].value_counts()
+            assert value_counted[0] == value_counted[1]
 
         # prepare for language model
         self.tokenizer = AutoTokenizer.from_pretrained(pretrained_url)
@@ -113,9 +109,9 @@ class MBTIDataset(Dataset):
         answer = re.sub(r"^\s+", '', answer)        # remove space from start
         answer = re.sub(r'\s+$', '', answer)        # remove space from the end
         return answer
-    
-    def preprocess_text(self, data: pd.DataFrame):
-        data['Answer'] = data['Answer'].apply(self.fix_grammar)
+
+    def preprocess_txt(self, data: pd.DataFrame):
+        data['Answer'] = data['Answer'].apply(self.fix_grammar)         # 해당 패키지의 서버가 가끔 응답 오류가 남. 그럴 땐 주석 처리 필요. 데이터 저장해둘걸!
         data['Answer'] = data['Answer'].apply(self.fix_spacing)
         data['Answer'] = data['Answer'].apply(self.remove_punctuation)
 
