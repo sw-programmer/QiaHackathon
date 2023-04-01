@@ -105,6 +105,7 @@ class MBTIDataset(Dataset):
 
         sample              = selected_data['QandA']                                # [batch size   x   sequence length]
         #FIXME: Dataframe 으로 넣으면 여기서 에러가 남
+        #TypeError: 'str' object does not support item assignment
         sample['cat_input'] = cat_input
         sample['num_input'] = num_input
 
