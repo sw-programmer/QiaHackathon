@@ -1,5 +1,6 @@
 import os
 import re
+from tqdm import tqdm
 from typing import Union
 
 import torch
@@ -39,7 +40,7 @@ class MBTIDataset(Dataset):
             is_bert (bool, optional): Using BERT for language model or not. Defaults to True.
             is_train (bool, optional): Whether given data is for training or not. Defaults to True.
         """
-        
+
         def resolve_path(path:str)->pd.DataFrame:
             if path.endswith('.csv'):
                 try:
@@ -52,6 +53,7 @@ class MBTIDataset(Dataset):
 
         data = None
         question_data = None
+        label_cols = ['I/E', 'S/N', 'T/F', 'J/P']
         # if given data_path is pd.Dataframe, we assume preprocessing is already applied to given Dataframe
         # so that it can skip all the processes below
         if not isinstance(data_path, pd.DataFrame):
@@ -67,16 +69,15 @@ class MBTIDataset(Dataset):
                 data['Age'] = (data['Age'] - data['Age'].mean()) / data['Age'].std()
 
             # make dataset suitable for binary classification (only for training data - test data doesn't contain 'MBTI' field)
-            label_cols = None
             if is_train and is_binary_classification:
                 self.prepare_binary_classification(data)
                 # if method right above works successfully, then data should contain same # 0 and 1.
-                label_cols = ['I/E', 'S/N', 'T/F', 'J/P']
                 for col in label_cols:
                     value_counted = data[col].value_counts()
                     assert value_counted[0] == value_counted[1]
 
             # prepare for language model
+            #FIXME: df 를 넣으면 tokenizer 인식 못함. data 랑 같이 저장해줘야 할 듯.
             self.tokenizer = AutoTokenizer.from_pretrained(pretrained_url)
             self.padding_per_batch = padding_per_batch
             self.tokenize(data)
@@ -99,17 +100,19 @@ class MBTIDataset(Dataset):
 
         selected_data = self.data.iloc[idx]
 
-        cat_input = torch.tensor(selected_data[self.cat_col])                               # [batch size   x   # categorical features]
-        num_input = torch.tensor(selected_data[self.num_col])                               # [batch size   x   # numerical features]
+        cat_input = torch.tensor(selected_data[self.cat_col])                       # [batch size   x   # categorical features]
+        num_input = torch.tensor(selected_data[self.num_col])                       # [batch size   x   # numerical features]
 
-        sample              = selected_data['QandA']                                        # [batch size   x   sequence length]
+        sample              = selected_data['QandA']                                # [batch size   x   sequence length]
+        #FIXME: Dataframe 으로 넣으면 여기서 에러가 남
         sample['cat_input'] = cat_input
         sample['num_input'] = num_input
 
         # Include label only for training cases
         if self.is_train:
-            label = torch.tensor(selected_data[self.label_cols])                            # [batch size   x   1]
-            sample['label'] = label
+            for col in self.label_cols:
+                label = torch.tensor(selected_data[col])                            # [batch size   x   1]
+                sample[col] = label
 
         return sample
 
@@ -134,16 +137,23 @@ class MBTIDataset(Dataset):
         return answer
 
     def preprocess_txt(self, data: pd.DataFrame):
-        data['Answer'] = data['Answer'].apply(self.fix_grammar)         #FIXME: 해당 패키지의 서버가 가끔 응답 오류가 남. 그럴 땐 주석 처리 필요. 데이터 저장해둘걸!
-        data['Answer'] = data['Answer'].apply(self.fix_spacing)
-        data['Answer'] = data['Answer'].apply(self.remove_punctuation)
+        try:
+            data['Answer'] = data['Answer'].apply(self.fix_grammar)         #FIXME: 해당 패키지의 서버가 가끔 응답 오류가 남...
+        except:
+            pass
+        print('===============    fix_spacing     ===============')
+        tqdm.pandas()
+        data['Answer'] = data['Answer'].progress_apply(self.fix_spacing)
+        print('=============== remove_punctuation ===============')
+        tqdm.pandas()   # TODO:  필요 없으면 버리기
+        data['Answer'] = data['Answer'].progress_apply(self.remove_punctuation)
 
     def prepare_binary_classification(self, data: pd.DataFrame):
         one_list = ['E', 'N', 'F', 'P']
         zero_list = ['I', 'S', 'T', 'J']
 
         for idx, mbti in enumerate(one_list):
-            data[mbti] = data['MBTI'].str.upper()       \
+            data[mbti] = data['MBTI'].str               \
                 .contains(mbti)                         \
                 .replace({True: 1, False: 0})
 
@@ -160,7 +170,8 @@ class MBTIDataset(Dataset):
             #TODO: 필요시 max_length 조절 필요
             return self.tokenizer(selected_question,
                                   selected_answer,
-                                  padding=padding,
-                                  return_tensors='pt')
+                                  padding=padding)
 
-        data['QandA'] =  data.apply(tokenize_per_sentence, axis=1)
+        print('===============    tokenize    ===============')
+        tqdm.pandas()
+        data['QandA'] =  data.progress_apply(tokenize_per_sentence, axis=1)
