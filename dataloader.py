@@ -104,8 +104,6 @@ class MBTIDataset(Dataset):
         num_input = torch.tensor(selected_data[self.num_col])                       # [batch size   x   # numerical features]
 
         sample              = selected_data['QandA']                                # [batch size   x   sequence length]
-        #FIXME: Dataframe 으로 넣으면 여기서 에러가 남
-        #TypeError: 'str' object does not support item assignment
         sample['cat_input'] = cat_input
         sample['num_input'] = num_input
 
@@ -147,7 +145,6 @@ class MBTIDataset(Dataset):
         tqdm.pandas()
         data['Answer'] = data['Answer'].progress_apply(self.fix_spacing)
         print('=============== remove_punctuation ===============')
-        tqdm.pandas()
         data['Answer'] = data['Answer'].progress_apply(self.remove_punctuation)
 
     def prepare_binary_classification(self, data: pd.DataFrame):

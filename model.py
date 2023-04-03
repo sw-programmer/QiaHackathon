@@ -7,10 +7,10 @@ class BertWithMlp(BertForSequenceClassification):
     def __init__(
         self,
         config,
-        input_dim = None,
-        hidden_dim = None,
+        input_dim   = None,
+        hidden_dim  = None,
         num_classes = 2,
-        dropout = 0.1
+        dropout     = 0.1
         ):
 
         # ====================
@@ -20,8 +20,8 @@ class BertWithMlp(BertForSequenceClassification):
         # resulting BERT model is stored in 'self.bert'.
         super().__init__(config)
 
-        self.num_labels = config.num_labels
-        combined_feat_dim = config.text_feat_dim + config.cat_feat_dim + config.num_feat_dim
+        self.num_labels     = config.num_labels
+        combined_feat_dim   = config.text_feat_dim + config.cat_feat_dim + config.num_feat_dim
 
         # ===================
         #      MLP Setup
@@ -33,21 +33,23 @@ class BertWithMlp(BertForSequenceClassification):
             num_classes=num_classes,
             dropout=dropout
         )
+        print(" =========== mlp model =========== ")
+        print(self.mlp)
         self.dropout = nn.Dropout(p=dropout, inplace=False)
-        self.bn = nn.BatchNorm1d(config.num_feat_dim)
+        self.bn      = nn.BatchNorm1d(config.num_feat_dim)
 
     def forward(
         self,
-        input_ids = None,
-        attention_mask = None,
-        token_type_ids = None,
-        position_ids = None,
-        head_mask = None,
-        inputs_embeds = None,
-        labels = None,
+        input_ids       = None,
+        attention_mask  = None,
+        token_type_ids  = None,
+        position_ids    = None,
+        head_mask       = None,
+        inputs_embeds   = None,
+        labels          = None,
         output_attentions = None,
-        cat_input = None,
-        num_input = None
+        cat_input       = None,
+        num_input       = None
     ):
         # ====================
         #     BERT forward
