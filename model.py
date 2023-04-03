@@ -58,6 +58,7 @@ class BertWithMlp(BertForSequenceClassification):
             token_type_ids=token_type_ids,
             attention_mask=attention_mask)
 
+        # TODO: cls 검증 필요
         cls = logits[1]
         # Apply dropout to cls
         cls = self.dropout(cls)
