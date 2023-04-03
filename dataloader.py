@@ -76,13 +76,13 @@ class MBTIDataset(Dataset):
                     value_counted = data[col].value_counts()
                     assert value_counted[0] == value_counted[1]
 
-            # prepare for language model
-            #FIXME: df 를 넣으면 tokenizer 인식 못함. data 랑 같이 저장해줘야 할 듯.
+            # tokenize
             self.tokenizer = AutoTokenizer.from_pretrained(pretrained_url)
             self.padding_per_batch = padding_per_batch
             self.tokenize(data)
 
         else:
+            # If data_path is pd.DataFrame, we assume all the processes above are done in advance.
             data = data_path
 
         # set columns for both training and inference
@@ -139,6 +139,7 @@ class MBTIDataset(Dataset):
 
     def preprocess_txt(self, data: pd.DataFrame):
         try:
+            print('===============    fix_grammar     ===============')
             data['Answer'] = data['Answer'].apply(self.fix_grammar)         #FIXME: 해당 패키지의 서버가 가끔 응답 오류가 남...
         except:
             pass
@@ -146,7 +147,7 @@ class MBTIDataset(Dataset):
         tqdm.pandas()
         data['Answer'] = data['Answer'].progress_apply(self.fix_spacing)
         print('=============== remove_punctuation ===============')
-        tqdm.pandas()   # TODO:  필요 없으면 버리기
+        tqdm.pandas()
         data['Answer'] = data['Answer'].progress_apply(self.remove_punctuation)
 
     def prepare_binary_classification(self, data: pd.DataFrame):
