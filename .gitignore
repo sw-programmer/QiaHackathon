@@ -1,7 +1,11 @@
+# data files
 *.csv
 
+# experiment logs
 MBTI/wandb
 
+# model checkpoints
 MBTI/models/sw
 
+# deprecated train runner
 *.ipynb
