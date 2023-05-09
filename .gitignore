@@ -1,0 +1,7 @@
+*.csv
+
+MBTI/wandb
+
+MBTI/models/sw
+
+*.ipynb
