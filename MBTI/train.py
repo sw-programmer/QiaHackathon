@@ -149,7 +149,7 @@ def runner(config,
       scheduler.step()
 
       # Save model for every 10 epochs or last model
-      if epoch % 10 == 0 or epoch == config['epoch'] - 1:
+      if epoch == 30 or epoch == config['epoch'] - 1:
         model_path = f'./models/{user}/{test_name}/{target_dir}'
         os.makedirs(model_path, exist_ok=True)
         torch.save({
