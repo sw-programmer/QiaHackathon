@@ -41,17 +41,15 @@ def train(model, loader, criterion, optim, device):
   for _, batch in tqdm(enumerate(loader)):
     input_ids       = batch['input_ids'].to(device)
     attention_mask  = batch['attention_mask'].to(device)
-    gender  = batch['Gender'].to(device)
-    age     = batch['Age'].to(device)
+    others  = batch['Others'].to(device)
     q_num   = batch['Q_number'].to(device)
     label   = batch['label'].to(device)
     output  = model(input_ids,
                     attention_mask=attention_mask,
-                    gender=gender,
-                    age=age,
+                    others=others,
                     q_num=q_num)
-
     loss = criterion(output, label)
+
     optim.zero_grad()
     loss.backward()
     optim.step()
@@ -71,14 +69,12 @@ def valid(model, loader, criterion, device):
   for _, batch in tqdm(enumerate(loader)):
     input_ids       = batch['input_ids'].to(device)
     attention_mask  = batch['attention_mask'].to(device)
-    gender  = batch['Gender'].to(device)
-    age     = batch['Age'].to(device)
+    others  = batch['Others'].to(device)
     q_num   = batch['Q_number'].to(device)
     label   = batch['label'].to(device)
     output  = model(input_ids,
                     attention_mask=attention_mask,
-                    gender=gender,
-                    age=age,
+                    others=others,
                     q_num=q_num)
     loss = criterion(output, label)
 
@@ -131,7 +127,7 @@ def runner(config,
     start_epoch = 0
     # Load checkpoint when resumption
     if resume:
-      target_epoch = 49
+      target_epoch = 99
       checkpoint_fpath = f'./models/sw/sw_test_nonfreeze/{target_dir}/epoch_{target_epoch}.pth.tar'
       model, optim = module.load_ckp(checkpoint_fpath, model, optim)
       start_epoch = target_epoch   
@@ -155,15 +151,18 @@ def runner(config,
       valid_final.append([valid_loss, valid_acc])
       
       scheduler.step()
+      if epoch % 10 == 0:
+        print("Current lr : ", optim.param_groups[0]['lr'])
 
       # Save model for every 10 epochs or last model
-      if epoch == 60 or epoch == 80 or epoch == config['epoch'] - 1:
-        model_path = f'./models/{user}/{test_name}/{target_dir}'
-        os.makedirs(model_path, exist_ok=True)
-        torch.save({
-            'state_dict': model.state_dict(),
-            'optimizer' : optim.state_dict(),
-        }, f"{model_path}/epoch_{epoch}.pth.tar")
+      if epoch != 0:
+        if epoch % 50 == 0 or epoch == config['epoch'] - 1:
+          model_path = f'./models/{user}/{test_name}/{target_dir}'
+          os.makedirs(model_path, exist_ok=True)
+          torch.save({
+              'state_dict': model.state_dict(),
+              'optimizer' : optim.state_dict(),
+          }, f"{model_path}/epoch_{epoch}.pth.tar")
 
     FINAL_RESULT[target] = (train_final, valid_final)
 
@@ -174,13 +173,14 @@ if __name__ == "__main__":
 
     # Argument parsing
     parser = argparse.ArgumentParser()
-    parser.add_argument('--resume', default=False, type=module.str2bool)         # Whether train from scratch or from saved checkpoint
-    parser.add_argument('--epoch', type=int, default=50)              # Epoch
-    parser.add_argument('--batch_size', type=int, default=64)         # Batch Size
-    parser.add_argument('--lr', type=float, default=3e-3)             # Learning rate
-    parser.add_argument('--momentum', type=float, default=0.9)        # Momentum
-    parser.add_argument('--freeze', default=True, type=module.str2bool)          # Whether freeze pretrained model's parameters or not
-    parser.add_argument('--proj', type=str, default='sw_test_nonfreeze')      # Project name for wandb
+    parser.add_argument('--resume', default=False, type=module.str2bool)    # Whether train from scratch or from saved checkpoint
+    parser.add_argument('--epoch', type=int, default=50)                    # Epoch
+    parser.add_argument('--batch_size', type=int, default=64)               # Batch Size
+    parser.add_argument('--lr', type=float, default=1e-3)                   # Learning rate
+    parser.add_argument('--momentum', type=float, default=0.9)              # Momentum
+    parser.add_argument('--freeze', default=True, type=module.str2bool)     # Whether freeze pretrained model's parameters or not
+    parser.add_argument('--proj', type=str, default='sw_test_nonfreeze')    # Project name for wandb
+    parser.add_argument('--hf_url', type=str, default="xlm-roberta-base")  # Pretrained url for huggingface
     args = parser.parse_args()
     print(args)
 
@@ -193,7 +193,7 @@ if __name__ == "__main__":
     train_df = module.encode_one_hot(train_df)
     valid_df = module.encode_one_hot(valid_df)
 
-    pretrained_url = "xlm-roberta-base"
+    pretrained_url = args.hf_url
     train_encoding = module.tokenize(pretrained_url, train_df)
     valid_encoding = module.tokenize(pretrained_url, valid_df)
     base_model = module.load_pretrained_model(pretrained_url)

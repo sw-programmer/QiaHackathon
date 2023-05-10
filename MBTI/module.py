@@ -18,7 +18,6 @@ def set_seed(seed):
 def load_saved_data(path):
     with open(path, 'rb') as handle:
         df = pickle.load(handle)
-    print(df.head())
     return df
 
 # Convert string to boolean for argparser
@@ -44,6 +43,7 @@ def divide_train_valid(train_df, ratio, seed):
     print(f"len of train_df : {len(train_df)}, lend of valid_df : {len(valid_df)}")
     return train_df, valid_df
 
+# Encode main answer into one-hot embedded vector
 def encode_one_hot(df):
     answer_list = ['<그렇다>', '<중립>', '<아니다>']
     count = 0
@@ -52,7 +52,7 @@ def encode_one_hot(df):
         count += df[answer].value_counts()[1]
     assert len(df) == count
     print("!!! one-hot encoded !!!")
-    print(df)
+    print(df.head())
     return df
 
 # Tokenize input in order to feed pretrained model
@@ -81,8 +81,9 @@ def load_pretrained_model(pretrained_url):
         base_model = AutoModel.from_pretrained(saved_path)
     else:
         base_model = AutoModel.from_pretrained(pretrained_url)  
-        os.makedirs(saved_path, exist_ok=True)  
+        os.makedirs(saved_path, exist_ok=True)
         base_model.save_pretrained(saved_path)
+    print(f"!!! selected model : {pretrained_url} !!!")
     return base_model
 
 # Garbage collect
