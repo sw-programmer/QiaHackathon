@@ -1,5 +1,6 @@
 # QiaHackathon
 
+```bash
 MBTI
  ┣ data
  ┃ ┣ sw
@@ -16,3 +17,4 @@ MBTI
  ┣ test.py
  ┣ train.py
  ┗ train_sw_v2.ipynb
+```
