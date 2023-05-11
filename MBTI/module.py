@@ -31,16 +31,17 @@ def str2bool(v):
     else:
         raise ValueError("!!! Wrong input for freezing argument !!!")
 
-# Divide train dataset into train & valid
-def divide_train_valid(train_df, ratio, seed):
-    valid_df = train_df.sample(frac=ratio, random_state=seed)
-    train_df = train_df.drop(valid_df.index)
+# Divide train dataset into train & valid based on MBTI
+def divide_train_valid(train_df, number_per_MBTI, seed):
 
-    # reset index
-    valid_df.reset_index(drop=True, inplace=True)
-    train_df.reset_index(drop=True, inplace=True)
+    valid_df = train_df.groupby('MBTI').apply(          \
+        lambda x: x.sample(                             \
+            n=number_per_MBTI, random_state=seed        \
+            )                                           \
+        ).reset_index(drop = True)
+    train_df = train_df[~train_df['Data_ID'].isin(valid_df['Data_ID'].tolist())].reset_index(drop=True)        # Exclue valid data from trian data based on 'Data_ID' column (primary key)
 
-    print(f"len of train_df : {len(train_df)}, lend of valid_df : {len(valid_df)}")
+    print(f"!!! len of train_df : {len(train_df)}, len of valid_df : {len(valid_df)}, you seleceted {number_per_MBTI} rows per MBTI !!!")
     return train_df, valid_df
 
 # Encode main answer into one-hot embedded vector
