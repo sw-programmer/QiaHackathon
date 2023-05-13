@@ -33,15 +33,15 @@ def str2bool(v):
 
 # Divide train dataset into train & valid based on MBTI
 def divide_train_valid(train_df, number_per_MBTI, seed):
-
+    origin_len =  len(train_df)
     valid_df = train_df.groupby('MBTI').apply(          \
         lambda x: x.sample(                             \
             n=number_per_MBTI, random_state=seed        \
             )                                           \
         ).reset_index(drop = True)
     train_df = train_df[~train_df['Data_ID'].isin(valid_df['Data_ID'].tolist())].reset_index(drop=True)        # Exclue valid data from trian data based on 'Data_ID' column (primary key)
-
-    print(f"!!! len of train_df : {len(train_df)}, len of valid_df : {len(valid_df)}, you seleceted {number_per_MBTI} rows per MBTI !!!")
+    percentage = (len(valid_df) / origin_len) * 100
+    print(f"!!! len of train_df : {len(train_df)}, len of valid_df : {len(valid_df)}, you seleceted {percentage}% from training data !!!")
     return train_df, valid_df
 
 # Encode main answer into one-hot embedded vector

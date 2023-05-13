@@ -101,7 +101,7 @@ def runner(config,
 
   # Train 4 models for each of the MBTI attribute
   FINAL_RESULT = {}
-  for target in ['I/E']:          # MBTI = ['I/E', 'S/N', 'T/F', 'J/P']
+  for target in MBTI:          # MBTI = ['I/E', 'S/N', 'T/F', 'J/P']
 
     print(f"##############   Target : {target}  ################")
 
@@ -127,10 +127,10 @@ def runner(config,
     start_epoch = 0
     # Load checkpoint when resumption
     if resume:
-      target_epoch = 99
-      checkpoint_fpath = f'./models/sw/sw_test_nonfreeze/{target_dir}/epoch_{target_epoch}.pth.tar'
+      target_epoch = 100
+      checkpoint_fpath = f'./models/sw/{test_name}/{target_dir}/epoch_{target_epoch}.pth.tar'
       model, optim = module.load_ckp(checkpoint_fpath, model, optim)
-      start_epoch = target_epoch   
+      start_epoch = target_epoch
       config['epoch'] += target_epoch + 1
 
     # Train/Valid Loop
@@ -143,18 +143,18 @@ def runner(config,
       try:
         wandb.log({'train_loss': train_loss, 'train_acc': train_acc, 'epoch': epoch})
         wandb.log({'valid_loss': valid_loss, 'valid_acc': valid_acc, 'epoch': epoch})
+        wandb.log({'lr' : scheduler.get_last_lr()[0]})
+        print({'lr' : scheduler.get_last_lr()})
       except:     # wandb 연결 끊어질 경우 방지
         print({'train_loss': train_loss, 'train_acc': train_acc, 'epoch': epoch})
         print({'valid_loss': valid_loss, 'valid_acc': valid_acc, 'epoch': epoch})
 
       train_final.append([train_loss, train_acc])
       valid_final.append([valid_loss, valid_acc])
-      
-      scheduler.step()
-      if epoch % 10 == 0:
-        print("Current lr : ", optim.param_groups[0]['lr'])
 
-      # Save model for every 10 epochs or last model
+      scheduler.step()
+
+      # Save model for every 50 epochs or last model
       if epoch != 0:
         if epoch % 50 == 0 or epoch == config['epoch'] - 1:
           model_path = f'./models/{user}/{test_name}/{target_dir}'
@@ -167,6 +167,13 @@ def runner(config,
     FINAL_RESULT[target] = (train_final, valid_final)
 
   return FINAL_RESULT
+
+
+#############################################
+#
+#               Main function
+#         
+#############################################
 
 
 if __name__ == "__main__":
@@ -187,9 +194,9 @@ if __name__ == "__main__":
     # Training preparation
     seed = 1234
     module.set_seed(seed)
-    train_path  = './data/sw/' + 'train_data_spacing_fixed.pickle'
+    train_path  = './data/sw/' + 'train_data_augmented_v1.pickle'
     train_df  = module.load_saved_data(train_path)
-    train_df, valid_df  = module.divide_train_valid(train_df, 0.1, seed)
+    train_df, valid_df  = module.divide_train_valid(train_df, 150, seed)
     train_df = module.encode_one_hot(train_df)
     valid_df = module.encode_one_hot(valid_df)
 
@@ -204,7 +211,7 @@ if __name__ == "__main__":
     # Training configuration
     config = {
       'batch_size' : args.batch_size,
-      'hidden_dim' : [256, 64, 16],
+      'hidden_dim' : [256, 32],
       'lr' : args.lr,
       'momentum' : args.momentum,
       'epoch' : args.epoch
