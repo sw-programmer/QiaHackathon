@@ -4,6 +4,7 @@ import re
 from tqdm import tqdm
 from tqdm import trange
 import pprint
+import argparse
 
 import pandas as pd
 import numpy as np
@@ -23,13 +24,6 @@ from mbti_dataset import MBTIDataset
 from classifier import MLPClassifier
 import module
 
-# Random seed
-seed = 1234
-random.seed(seed)
-np.random.seed(seed)
-torch.manual_seed(seed)
-torch.cuda.manual_seed_all(seed)
-
 # MBTI
 MBTI = ['I/E', 'S/N', 'T/F', 'J/P']
 
@@ -47,17 +41,15 @@ def train(model, loader, criterion, optim, device):
   for _, batch in tqdm(enumerate(loader)):
     input_ids       = batch['input_ids'].to(device)
     attention_mask  = batch['attention_mask'].to(device)
-    gender  = batch['gender'].to(device)
-    age     = batch['age'].to(device)
-    q_num   = batch['q_num'].to(device)
+    others  = batch['Others'].to(device)
+    q_num   = batch['Q_number'].to(device)
     label   = batch['label'].to(device)
     output  = model(input_ids,
                     attention_mask=attention_mask,
-                    gender=gender,
-                    age=age,
+                    others=others,
                     q_num=q_num)
-
     loss = criterion(output, label)
+
     optim.zero_grad()
     loss.backward()
     optim.step()
@@ -77,14 +69,12 @@ def valid(model, loader, criterion, device):
   for _, batch in tqdm(enumerate(loader)):
     input_ids       = batch['input_ids'].to(device)
     attention_mask  = batch['attention_mask'].to(device)
-    gender  = batch['gender'].to(device)
-    age     = batch['age'].to(device)
-    q_num   = batch['q_num'].to(device)
+    others  = batch['Others'].to(device)
+    q_num   = batch['Q_number'].to(device)
     label   = batch['label'].to(device)
     output  = model(input_ids,
                     attention_mask=attention_mask,
-                    gender=gender,
-                    age=age,
+                    others=others,
                     q_num=q_num)
     loss = criterion(output, label)
 
@@ -103,14 +93,15 @@ def runner(config,
            train_df,
            valid_df,
            base_model,
-           device):
+           resume,
+           device,
+           test_name):
   # MENDATORY
   user = 'sw'
-  test_name = 'test_1'
 
   # Train 4 models for each of the MBTI attribute
   FINAL_RESULT = {}
-  for target in ['T/F', 'J/P']:          # MBTI = ['I/E', 'S/N', 'T/F', 'J/P']
+  for target in MBTI:          # MBTI = ['I/E', 'S/N', 'T/F', 'J/P']
 
     print(f"##############   Target : {target}  ################")
 
@@ -133,58 +124,100 @@ def runner(config,
     scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=10, gamma=0.8)
     criterion = nn.CrossEntropyLoss()
 
+    start_epoch = 0
+    # Load checkpoint when resumption
+    if resume:
+      target_epoch = 100
+      checkpoint_fpath = f'./models/sw/{test_name}/{target_dir}/epoch_{target_epoch}.pth.tar'
+      model, optim = module.load_ckp(checkpoint_fpath, model, optim)
+      start_epoch = target_epoch
+      config['epoch'] += target_epoch + 1
+
     # Train/Valid Loop
     train_final = []
     valid_final = []
-    for epoch in tqdm(range(config['epoch'])):
+    for epoch in tqdm(range(start_epoch, config['epoch'])):
       train_loss, train_acc = train(model, train_loader, criterion, optim, device)
       valid_loss, valid_acc = valid(model, valid_loader, criterion, device)
 
-      wandb.log({'train_loss': train_loss, 'train_acc': train_acc, 'epoch': epoch})
-      wandb.log({'valid_loss': valid_loss, 'valid_acc': valid_acc, 'epoch': epoch})
+      try:
+        wandb.log({'train_loss': train_loss, 'train_acc': train_acc, 'epoch': epoch})
+        wandb.log({'valid_loss': valid_loss, 'valid_acc': valid_acc, 'epoch': epoch})
+        wandb.log({'lr' : scheduler.get_last_lr()[0]})
+        print({'lr' : scheduler.get_last_lr()})
+      except:     # wandb 연결 끊어질 경우 방지
+        print({'train_loss': train_loss, 'train_acc': train_acc, 'epoch': epoch})
+        print({'valid_loss': valid_loss, 'valid_acc': valid_acc, 'epoch': epoch})
 
       train_final.append([train_loss, train_acc])
       valid_final.append([valid_loss, valid_acc])
-      
+
       scheduler.step()
 
-      # Save model for every 10 epochs or last model
-      if epoch == 30 or epoch == config['epoch'] - 1:
-        model_path = f'./models/{user}/{test_name}/{target_dir}'
-        os.makedirs(model_path, exist_ok=True)
-        torch.save({
-            'state_dict': model.state_dict(),
-            'optimizer' : optim.state_dict(),
-        }, f"{model_path}/epoch_{epoch}.pth.tar")
+      # Save model for every 50 epochs or last model
+      if epoch != 0:
+        if epoch % 50 == 0 or epoch == config['epoch'] - 1:
+          model_path = f'./models/{user}/{test_name}/{target_dir}'
+          os.makedirs(model_path, exist_ok=True)
+          torch.save({
+              'state_dict': model.state_dict(),
+              'optimizer' : optim.state_dict(),
+          }, f"{model_path}/epoch_{epoch}.pth.tar")
 
     FINAL_RESULT[target] = (train_final, valid_final)
 
   return FINAL_RESULT
 
 
-if __name__ == "__main__":
-    train_path  = './data/sw/' + 'train_data_spacing_fixed.pickle'
-    train_df  = module.load_saved_data(train_path)
-    train_df, valid_df  = module.divide_train_valid(train_df, 0.1, seed)
+#############################################
+#
+#               Main function
+#         
+#############################################
 
-    pretrained_url = "xlm-roberta-large"
+
+if __name__ == "__main__":
+
+    # Argument parsing
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--resume', default=False, type=module.str2bool)    # Whether train from scratch or from saved checkpoint
+    parser.add_argument('--epoch', type=int, default=50)                    # Epoch
+    parser.add_argument('--batch_size', type=int, default=64)               # Batch Size
+    parser.add_argument('--lr', type=float, default=1e-3)                   # Learning rate
+    parser.add_argument('--momentum', type=float, default=0.9)              # Momentum
+    parser.add_argument('--freeze', default=True, type=module.str2bool)     # Whether freeze pretrained model's parameters or not
+    parser.add_argument('--proj', type=str, default='sw_test_nonfreeze')    # Project name for wandb
+    parser.add_argument('--hf_url', type=str, default="xlm-roberta-base")  # Pretrained url for huggingface
+    args = parser.parse_args()
+    print(args)
+
+    # Training preparation
+    seed = 1234
+    module.set_seed(seed)
+    train_path  = './data/sw/' + 'train_data_augmented_v1.pickle'
+    train_df  = module.load_saved_data(train_path)
+    train_df, valid_df  = module.divide_train_valid(train_df, 150, seed)
+    train_df = module.encode_one_hot(train_df)
+    valid_df = module.encode_one_hot(valid_df)
+
+    pretrained_url = args.hf_url
     train_encoding = module.tokenize(pretrained_url, train_df)
     valid_encoding = module.tokenize(pretrained_url, valid_df)
     base_model = module.load_pretrained_model(pretrained_url)
     module.collect_garbage()
     device = module.prepare_gpu()
-    module.freeze_encoder(base_model)
+    module.freeze_encoder(base_model, args.freeze)
 
-    #train/valid
+    # Training configuration
     config = {
-      'batch_size' : 64,
+      'batch_size' : args.batch_size,
       'hidden_dim' : [256, 32],
-      'lr' : 2e-3,
-      'momentum' : 0.9,
-      'epoch' : 40
+      'lr' : args.lr,
+      'momentum' : args.momentum,
+      'epoch' : args.epoch
     }
 
-    wandb.init(project='sw_test_2')
+    wandb.init(project=args.proj)
     wandb.config = config
 
     result = runner(config=config,
@@ -193,7 +226,9 @@ if __name__ == "__main__":
                     train_df=train_df,
                     valid_df=valid_df,
                     base_model=base_model,
-                    device=device)
+                    resume=args.resume,
+                    device=device,
+                    test_name=args.proj)
     
     
     

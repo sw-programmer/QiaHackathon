@@ -10,9 +10,8 @@ class MBTIDataset(Dataset):
         target = None
         ):
         self.encodings = encodings
-        self.age    = df['Age']
-        self.gender = df['Gender']
-        self.q_num  = df['Q_number']
+        self.df = df
+        self.selected = ['Age', 'Gender', '<그렇다>', '<중립>', '<아니다>']
         self.label  = df[target] if target is not None else None
 
     def __len__(self):
@@ -20,10 +19,10 @@ class MBTIDataset(Dataset):
 
     def __getitem__(self, idx):
         sample = {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
-        sample['age']     = torch.tensor(self.age[idx])
-        sample['gender']  = torch.tensor(self.gender[idx])
-        sample['q_num']   = torch.tensor(self.q_num[idx])
-        if self.label is not None:
+        sample['Q_number'] = torch.tensor(self.df['Q_number'][idx])
+        sample['Others'] = torch.tensor(self.df[self.selected].iloc[idx])
+        # Only for training
+        if self.label is not None:              
             sample["label"] = torch.tensor(self.label[idx])
 
         return sample
